@@ -37,11 +37,18 @@ jobs:
             cd /home/ec2-user/app
 
             echo "Stopping old application if running..."
-            pkill -f datastore-0.0.7.jar || true
-            sleep 5
+
+            if pgrep -f datastore-0.0.7.jar > /dev/null; then
+               pkill -f datastore-0.0.7.jar
+               sleep 5
+               echo "Old application stopped."
+            else
+                echo "No old application running."
+            fi
 
             echo "Removing old JAR if exists..."
             rm -f datastore-0.0.7.jar
+
 
       # 5️⃣ Upload New JAR
       - name: Upload JAR to EC2
