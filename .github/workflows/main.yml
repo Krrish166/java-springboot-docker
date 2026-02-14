@@ -82,4 +82,4 @@ jobs:
 
             pgrep -fl datastore-0.0.7.jar || (echo "❌ Application failed to start" && exit 1)
 
-            echo "✅ Application started successfully"
+            echo "✅ Application started successfull"
