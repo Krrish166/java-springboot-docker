@@ -2,9 +2,7 @@ version: "3.8"
 
 services:
   frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    image: frontend-app
     container_name: frontend-app
     environment:
       API_URL: ${API_URL}
@@ -16,9 +14,7 @@ services:
       - backend
 
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    image: backend-app
     container_name: backend-app
     ports:
       - "${BACKEND_PORT}:8084"
