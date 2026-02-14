@@ -90,11 +90,11 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
           script: |
-            sudo mkdir -p /var/log/app
-            sudo chown ec2-user:ec2-user /var/log/app
-            sudo chmod 777 /var/log/app
+            sudo mkdir -p /home/ec2-user/app
+            sudo chown -R ec2-user:ec2-user /home/ec2-user/app
+            sudo rm -f /home/ec2-user/app/datastore-0.0.7.jar
 
-            cd /home/ec2-user/app/target
+            cd /home/ec2-user/app
 
             nohup env \
             MYSQL_HOST=database-1.c7ko02u0ih4r.ap-south-1.rds.amazonaws.com\
