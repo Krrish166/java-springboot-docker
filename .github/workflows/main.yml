@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout SCM
+      # 1️⃣ Checkout Code
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -20,40 +20,35 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # # 3️⃣ Clean & Package + SonarQube Scan
-      # - name: Sonar Scan
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   run: |
-      #     mvn clean verify sonar:sonar \
-      #       -DskipTests \
-      #       -Dsonar.projectKey=myproject \
-      #       -Dsonar.host.url=${{ secrets.SONAR_URL }} \
-      #       -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-
-
-      # 4️⃣ Quality Gate Check
-      # - name: Quality Gate
-      #   uses: sonarsource/sonarqube-quality-gate-action@v1
-      #   timeout-minutes: 5
-      #   with:
-      #     scanMetadataReportFile: target/site/sonar/report-task.txt
-
-      # 5️⃣ Build final JAR
+      # 3️⃣ Build JAR
       - name: Build JAR
         run: mvn clean package -DskipTests=true
         working-directory: backend
-      - name: Remove old JAR
-        uses: appleboy/ssh-action@v1.0.3
+
+      # 4️⃣ Prepare EC2 Directory & Stop Old App
+      - name: Prepare EC2
+        uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
           script: |
-            sudo rm -f /home/ec2-user/app/backend/target/datastore-0.0.7.jar
-            sudo chown -R ec2-user:ec2-user /home/ec2-user/app
+            mkdir -p /home/ec2-user/app
+            cd /home/ec2-user/app
 
-      # 6️⃣ Copy JAR to EC2
+            # Stop old application if running
+            PID=$(pgrep -f datastore-0.0.7.jar || true)
+            if [ -n "$PID" ]; then
+              echo "Stopping existing application with PID: $PID"
+              kill -9 $PID || true
+            else
+              echo "No existing application running"
+            fi
+
+            # Remove old jar
+            rm -f datastore-0.0.7.jar
+
+      # 5️⃣ Upload New JAR to EC2
       - name: Upload JAR to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -64,46 +59,29 @@ jobs:
           target: "/home/ec2-user/app/"
           overwrite: true
 
-      # 7️⃣ Stop Old Application
-      - name: Stop Old Application
-        uses: appleboy/ssh-action@v1.1.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: root
-          key: ${{ secrets.EC2_KEY }}
-          script_stop: false
-          script: |
-            PID=$(pgrep -f datastore-0.0.7.jar || true)
-            if [ -n "$PID" ]; then
-                echo "Stopping existing application with PID: $PID"
-               ### sudo kill -9 $PID || true
-            else
-                echo "No existing application running"
-            fi
-
-
-      # 8️⃣ Run New Application
-      - name: Run Application on EC2
+      # 6️⃣ Run Application
+      - name: Start Application
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
           script: |
-            sudo mkdir -p /home/ec2-user/app
-            sudo chown -R ec2-user:ec2-user /home/ec2-user/app
-            sudo rm -f /home/ec2-user/app/datastore-0.0.7.jar
-
             cd /home/ec2-user/app
 
             nohup env \
-            MYSQL_HOST=database-1.c7ko02u0ih4r.ap-south-1.rds.amazonaws.com\
-            MYSQL_PORT=3306 \
-            MYSQL_USERNAME=admin \
-            MYSQL_PASSWORD=bijaya123 \
-            LOG_FILE_PATH=/var/log/app/datastore.log \
-            java -jar datastore-0.0.7.jar \
-            --server.port=8084 \
-            > /var/log/app/nohup.out 2>&1 &
+              MYSQL_HOST=${{ secrets.MYSQL_HOST }} \
+              MYSQL_PORT=${{ secrets.MYSQL_PORT }} \
+              MYSQL_USERNAME=${{ secrets.MYSQL_USERNAME }} \
+              MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }} \
+              java -jar datastore-0.0.7.jar \
+              --server.port=8084 \
+              --server.address=0.0.0.0 \
+              > app.log 2>&1 &
 
-            echo "🚀 New Application Started"
+            sleep 10
+
+            # Check if app started
+            pgrep -fl datastore-0.0.7.jar || (echo "❌ App failed to start" && exit 1)
+
+            echo "✅ Application started successfully"
