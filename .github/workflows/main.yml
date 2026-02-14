@@ -64,6 +64,7 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           source: "backend/target/datastore-0.0.7.jar"
           target: "/home/ec2-user/app/"
+          strip_components: 2
           overwrite: true
 
       # 6️⃣ Start Application
