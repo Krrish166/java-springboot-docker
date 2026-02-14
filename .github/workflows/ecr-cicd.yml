@@ -9,16 +9,11 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
-    env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-      IMAGE_TAG: ${{ github.sha }}
-
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 1️⃣ Configure AWS Credentials
+    # Configure AWS
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -26,37 +21,25 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # 2️⃣ Login to ECR
+    # Login to ECR (GitHub runner)
     - name: Login to Amazon ECR
       uses: aws-actions/amazon-ecr-login@v2
 
-    # 3️⃣ Build Backend Image
-    - name: Build Backend Image
+    # Build & Push Backend
+    - name: Build & Push Backend Image
       run: |
         docker build -t backend-app ./backend
-        docker tag backend-app:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend-app:$IMAGE_TAG
-        docker tag backend-app:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend-app:latest
+        docker tag backend-app:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend-app:latest
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend-app:latest
 
-    # 4️⃣ Push Backend
-    - name: Push Backend Image
-      run: |
-        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend-app:$IMAGE_TAG
-        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend-app:latest
-
-    # 5️⃣ Build Frontend Image
-    - name: Build Frontend Image
+    # Build & Push Frontend
+    - name: Build & Push Frontend Image
       run: |
         docker build -t frontend-app ./frontend
-        docker tag frontend-app:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend-app:$IMAGE_TAG
-        docker tag frontend-app:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend-app:latest
+        docker tag frontend-app:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend-app:latest
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend-app:latest
 
-    # 6️⃣ Push Frontend
-    - name: Push Frontend Image
-      run: |
-        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend-app:$IMAGE_TAG
-        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend-app:latest
-
-    # 7️⃣ Deploy to EC2
+    # Deploy to EC2
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.1.0
       with:
@@ -65,40 +48,36 @@ jobs:
         key: ${{ secrets.EC2_KEY }}
         script: |
 
-          # Login to ECR on EC2
-          aws ecr get-login-password --region $AWS_REGION | \
-          docker login --username AWS --password-stdin \
-          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+          # Login to ECR inside EC2
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
+          | docker login --username AWS --password-stdin \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-          # Create Docker network if not exists
+          # Create network if not exists
           docker network create appnet || true
 
-          # Stop & Remove old containers
+          # Stop & remove old containers
           docker stop backend-app || true
           docker rm backend-app || true
           docker stop frontend-app || true
           docker rm frontend-app || true
 
           # Pull latest images
-          docker pull $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend-app:latest
-          docker pull $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend-app:latest
+          docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend-app:latest
+          docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend-app:latest
 
-          # Run Backend
+          # Run backend
           docker run -d --name backend-app \
             --network appnet \
-            --restart unless-stopped \
             -p 8084:8084 \
             -e SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }} \
             -e SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }} \
             -e SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }} \
-            $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend-app:latest
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend-app:latest
 
-          # Run Frontend
+          # Run frontend
           docker run -d --name frontend-app \
             --network appnet \
-            --restart unless-stopped \
             -p 8501:8501 \
             -e API_URL=http://backend-app:8084 \
-            $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend-app:latest
-
-          echo "🚀 Deployment Completed Successfully!"
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend-app:latest
