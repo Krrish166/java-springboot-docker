@@ -47,7 +47,7 @@ jobs:
       run: |
         docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend-app:latest
 
-    # Deploy to EC2
+    # Deploy to EC
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.1.0
       with:
