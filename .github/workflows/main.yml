@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout SCM
+      # 1️⃣ Checkout Code
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -20,78 +20,66 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 5️⃣ Build final JAR
+      # 3️⃣ Build JAR
       - name: Build JAR
         run: mvn clean package -DskipTests=true
-        working-directory: Java-springboot-project/backend
+        working-directory: backend
 
-      - name: Remove old JAR
-        uses: appleboy/ssh-action@v1.0.3
+      # 4️⃣ Prepare EC2 & Stop Old App
+      - name: Prepare EC2
+        uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
           script: |
-            sudo rm -f /home/ec2-user/app/target/datastore-0.0.7.jar
-            sudo chown -R ec2-user:ec2-user /home/ec2-user/app
+            mkdir -p /home/ec2-user/app
+            cd /home/ec2-user/app
 
-      # 6️⃣ Copy JAR to EC2
+            echo "Stopping old application if running..."
+            pkill -f datastore-0.0.7.jar || true
+            sleep 5
+
+            echo "Removing old JAR if exists..."
+            rm -f datastore-0.0.7.jar
+
+      # 5️⃣ Upload New JAR
       - name: Upload JAR to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
-          source: Java-springboot-project/backend/target/datastore-0.0.7.jar
-          target: /home/ec2-user/app/target/
+          source: "backend/target/datastore-0.0.7.jar"
+          target: "/home/ec2-user/app/"
           overwrite: true
 
-      # 7️⃣ Stop Old Application
-      - name: Stop Old Application
-        uses: appleboy/ssh-action@v1.1.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_KEY }}
-          script_stop: false
-          script: |
-           PIDS=$(pgrep -f datastore-0.0.7.jar || true)
-
-           if [ -n "$PIDS" ]; then
-               echo "Stopping existing application(s): $PIDS"
-               for PID in $PIDS; do
-                 kill -9 $PID || true
-               done 
-           else
-               echo "No existing application running"
-           fi
-
-
-      # 8️⃣ Run New Application (UPDATED ✔️)
-      - name: Run Application on EC2
+      # 6️⃣ Start Application
+      - name: Start Application
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
           script: |
-            sudo mkdir -p /var/log/app
-            sudo chown ec2-user:ec2-user /var/log/app
+            cd /home/ec2-user/app
 
-            cd /home/ec2-user/app/target/Java-springboot-project/backend/target
+            echo "Starting new application..."
 
             nohup env \
-              MYSQL_HOST=database-1.cxkq8gcu2wq9.ap-south-1.rds.amazonaws.com \
-              MYSQL_PORT=3306 \
-              MYSQL_USERNAME=admin \
-              MYSQL_PASSWORD=bijaya123 \
-              LOG_FILE_PATH=/var/log/app/datastore.log \
+              MYSQL_HOST=${{ secrets.MYSQL_HOST }} \
+              MYSQL_PORT=${{ secrets.MYSQL_PORT }} \
+              MYSQL_USERNAME=${{ secrets.MYSQL_USERNAME }} \
+              MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }} \
               java -jar datastore-0.0.7.jar \
               --server.port=8084 \
               --server.address=0.0.0.0 \
-              > /var/log/app/nohup.out 2>&1 &
+              > app.log 2>&1 &
 
-              sleep 10
-              pgrep -fl datastore-0.0.7.jar || (echo "❌ App failed to start" && exit 1)
+            sleep 10
 
-              echo "✅ Application started successfully"
+            echo "Checking if application started..."
+
+            pgrep -fl datastore-0.0.7.jar || (echo "❌ Application failed to start" && exit 1)
+
+            echo "✅ Application started successfully"
