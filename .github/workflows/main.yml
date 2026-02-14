@@ -97,10 +97,10 @@ jobs:
             cd /home/ec2-user/app/target
 
             nohup env \
-            MYSQL_HOST=database-1.cstu40q04izz.us-east-1.rds.amazonaws.com \
+            MYSQL_HOST=database-1.c7ko02u0ih4r.ap-south-1.rds.amazonaws.com\
             MYSQL_PORT=3306 \
             MYSQL_USERNAME=admin \
-            MYSQL_PASSWORD=Cloud123 \
+            MYSQL_PASSWORD=bijaya123 \
             LOG_FILE_PATH=/var/log/app/datastore.log \
             java -jar datastore-0.0.7.jar \
             --server.port=8084 \
